@@ -281,6 +281,7 @@ class LoxoneKeepAliveSensor(LoxoneEntity, SensorEntity):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._attr_native_value = None
+        self._extra_subscription_uuids = {"keep_alive"}
 
     @cached_property
     def unique_id(self) -> str:

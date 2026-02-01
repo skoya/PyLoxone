@@ -14,7 +14,8 @@
           "password": "Password",
           "generate_scenes": "Scenen generieren",
           "generate_lightcontroller_subcontrols": "Subcontrols für LightcontrollerV2 erzeugen",
-          "generate_scenes_delay": "Verzögerung beim erstellen der Scenen (wenn aktiviert)"
+          "generate_scenes_delay": "Verzögerung beim erstellen der Scenen (wenn aktiviert)",
+          "emit_raw_loxone_event": "Rohdaten-Event von loxone_event senden (legacy)"
         }
       }
     }
@@ -29,7 +30,8 @@
           "password": "Password",
           "generate_scenes": "Scenen generieren",
           "generate_lightcontroller_subcontrols": "Subcontrols für LightcontrollerV2 erzeugen",
-          "generate_scenes_delay": "Verzögerung beim erstellen der Scenen (wenn aktiviert)"
+          "generate_scenes_delay": "Verzögerung beim erstellen der Scenen (wenn aktiviert)",
+          "emit_raw_loxone_event": "Rohdaten-Event von loxone_event senden (legacy)"
         },
         "description": "PyLoxone Einstellungen editieren:",
         "title": "PyLoxone Einstellungen"

@@ -19,7 +19,8 @@ from homeassistant.helpers.selector import (BooleanSelector, NumberSelector,
                                             TextSelectorConfig,
                                             TextSelectorType)
 
-from .const import (CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, CONF_SCENE_GEN,
+from .const import (CONF_EMIT_RAW_LOXONE_EVENT,
+                    CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, CONF_SCENE_GEN,
                     CONF_SCENE_GEN_DELAY, DEFAULT_DELAY_SCENE, DEFAULT_IP,
                     DEFAULT_PORT, DOMAIN)
 
@@ -75,6 +76,7 @@ DATA_SCHEMA_SETUP = vol.Schema(
         vol.Required(
             CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, default=False
         ): BooleanSelector(),
+        vol.Optional(CONF_EMIT_RAW_LOXONE_EVENT, default=False): BooleanSelector(),
     }
 )
 
@@ -99,6 +101,7 @@ DATA_SCHEMA_OPTIONS = vol.Schema(
         vol.Required(
             CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, default=False
         ): BooleanSelector(),
+        vol.Optional(CONF_EMIT_RAW_LOXONE_EVENT, default=False): BooleanSelector(),
     }
 )
 
@@ -120,7 +123,7 @@ OPTIONS_FLOW = {
 class LoxoneFlowHandler(SchemaConfigFlowHandler, domain=DOMAIN):
     """Handle Loxone config flow."""
 
-    VERSION = 3
+    VERSION = 4
     config_flow = CONFIG_FLOW
     options_flow = OPTIONS_FLOW
 
