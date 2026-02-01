@@ -14,7 +14,8 @@
           "password": "Password",
           "generate_scenes": "generate scenes",
           "generate_lightcontroller_subcontrols": "generate subcontrols for lightcontrollerV2",
-          "generate_scenes_delay": "Delay for the scene generation if enabled"
+          "generate_scenes_delay": "Delay for the scene generation if enabled",
+          "emit_raw_loxone_event": "Emit raw loxone_event payload (legacy)"
         }
       }
     }
@@ -29,7 +30,8 @@
           "password": "Password",
           "generate_scenes": "Generate scenes",
           "generate_lightcontroller_subcontrols": "Generate subcontrols for lightcontrollerV2",
-          "generate_scenes_delay": "Delay for the scene generation if enabled"
+          "generate_scenes_delay": "Delay for the scene generation if enabled",
+          "emit_raw_loxone_event": "Emit raw loxone_event payload (legacy)"
         },
         "description": "PyLoxone edit settings:",
         "title": "PyLoxone settings"

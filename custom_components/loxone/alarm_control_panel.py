@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import LoxoneEntity
-from .const import DOMAIN, EVENT, SECUREDSENDDOMAIN, SENDDOMAIN
+from .const import DOMAIN, SECUREDSENDDOMAIN, SENDDOMAIN
 from .helpers import (add_room_and_cat_to_value_values, get_all,
                       get_or_create_device)
 from .miniserver import get_miniserver_from_hass
@@ -60,7 +60,6 @@ async def async_setup_entry(
         loxone_alarm = add_room_and_cat_to_value_values(loxconfig, loxone_alarm)
         loxone_alarm.update({"code": None})
         new_alarm = LoxoneAlarm(**loxone_alarm)
-        hass.bus.async_listen(EVENT, new_alarm.event_handler)
         entities.append(new_alarm)
 
     async_add_entities(entities, True)

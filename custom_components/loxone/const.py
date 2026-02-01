@@ -33,6 +33,7 @@ DEFAULT_DELAY_SCENE = 3
 DEFAULT_IP = ""
 
 EVENT = "loxone_event"
+EVENT_RAW = "loxone_event_raw"
 DOMAIN = "loxone"
 LOX_CONFIG = "loxconfig"
 
@@ -53,6 +54,7 @@ CONF_ACTIONID = "uuidAction"
 CONF_SCENE_GEN = "generate_scenes"
 CONF_SCENE_GEN_DELAY = "generate_scenes_delay"
 CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN = "generate_lightcontroller_subcontrols"
+CONF_EMIT_RAW_LOXONE_EVENT = "emit_raw_loxone_event"
 DEFAULT_FORCE_UPDATE = False
 
 SUPPORT_SUN_AUTOMATION = 1024

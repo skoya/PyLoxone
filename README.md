@@ -86,6 +86,9 @@ recorder:
       - loxone_event
 ```
 
+### Event payload size
+The integration now emits a minimal `loxone_event` payload per UUID update to keep events under Home Assistant's 32 KB recorder limit. If you still need the full/raw payload for legacy automations, enable the **emit_raw_loxone_event** option and listen to `loxone_event_raw` instead. The minimal event is always emitted and remains recorder-safe.
+
 ## Websocket direct command service
 If you want to send data directly to Loxone inputs or blocks that are not (yet) supported, you can use this service to send a command:
 
@@ -294,7 +297,6 @@ Here is a example of a Room Controller V2:
             }
         },
 ```
-
 
 
 

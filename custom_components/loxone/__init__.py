@@ -6,11 +6,14 @@ https://github.com/JoDehli/PyLoxone
 """
 
 import asyncio
+import json
 import logging
 import re
 import sys
 import traceback
+import uuid
 from functools import cached_property
+from types import SimpleNamespace
 
 import homeassistant.components.group as group
 import voluptuous as vol
@@ -24,17 +27,20 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 
 from .const import (ATTR_AREA_CREATE, ATTR_CODE, ATTR_COMMAND, ATTR_DEVICE,
-                    ATTR_UUID, ATTR_VALUE,
+                    ATTR_UUID, ATTR_VALUE, CONF_EMIT_RAW_LOXONE_EVENT,
                     CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, CONF_SCENE_GEN,
                     CONF_SCENE_GEN_DELAY, DEFAULT, DEFAULT_DELAY_SCENE,
                     DEFAULT_PORT, DOMAIN, DOMAIN_DEVICES, ERROR_VALUE, EVENT,
-                    LOXONE_PLATFORMS, SECUREDSENDDOMAIN, SENDDOMAIN, cfmt)
+                    EVENT_RAW, LOXONE_PLATFORMS, SECUREDSENDDOMAIN, SENDDOMAIN,
+                    cfmt)
 from .coordinator import LoxoneCoordinator
 from .helpers import get_miniserver_type
 from .miniserver import MiniServer, get_miniserver_from_hass
@@ -45,6 +51,7 @@ from .pyloxone_api.exceptions import (LoxoneConnectionClosedOk,
                                       LoxoneServiceUnAvailableError,
                                       LoxoneTokenError,
                                       LoxoneUnauthorisedError)
+from .state_cache import SIGNAL_UUID_UPDATE, LoxoneStateCache
 
 REQUIREMENTS = ["websockets", "pycryptodome", "numpy"]
 
@@ -63,6 +70,7 @@ CONFIG_SCHEMA = vol.Schema(
                     CONF_SCENE_GEN_DELAY, default=DEFAULT_DELAY_SCENE
                 ): cv.positive_int,
                 vol.Required(CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, default=False): bool,
+                vol.Optional(CONF_EMIT_RAW_LOXONE_EVENT, default=False): cv.boolean,
             }
         ),
     },
@@ -72,6 +80,48 @@ CONFIG_SCHEMA = vol.Schema(
 _UNDEF: dict = {}
 
 # TODO: get version and check for updates https://update.loxone.com/updatecheck.xml?serial=xxxxxxxxx
+
+
+def _is_uuid_key(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def extract_uuid_updates(message: dict) -> dict[str, object]:
+    if not isinstance(message, dict):
+        return {}
+
+    if "uuid" in message and "value" in message:
+        uuid_value = message.get("uuid")
+        if isinstance(uuid_value, str) and _is_uuid_key(uuid_value):
+            return {uuid_value: message.get("value")}
+
+    updates: dict[str, object] = {}
+    if "keep_alive" in message:
+        updates["keep_alive"] = message.get("keep_alive")
+
+    for key, value in message.items():
+        if isinstance(key, str) and _is_uuid_key(key):
+            updates[key] = value
+    return updates
+
+
+def build_minimal_event_payload(uuid_value: str, value: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "uuid": uuid_value,
+        "value": value,
+        "source": "websocket",
+        "ts": dt_util.utcnow().isoformat(),
+    }
+
+    serialized = json.dumps(payload, default=str)
+    if len(serialized) > 30000:
+        payload["value"] = str(value)[:512]
+        payload["truncated"] = True
+    return payload
 
 
 async def async_unload_entry(hass, config_entry):
@@ -158,6 +208,14 @@ async def async_migrate_entry(hass, config_entry):
         config_entry.options = {**new}
         config_entry.version = 3
         _LOGGER.info("Migration to version %s successful", 3)
+    if config_entry.version == 3:
+        new = {
+            **config_entry.options,
+            CONF_EMIT_RAW_LOXONE_EVENT: False,
+        }
+        config_entry.options = {**new}
+        config_entry.version = 4
+        _LOGGER.info("Migration to version %s successful", 4)
     return True
 
 
@@ -173,6 +231,7 @@ async def async_set_options(hass, config_entry):
         CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN: options_in.pop(
             CONF_LIGHTCONTROLLER_SUBCONTROLS_GEN, ""
         ),
+        CONF_EMIT_RAW_LOXONE_EVENT: options_in.pop(CONF_EMIT_RAW_LOXONE_EVENT, False),
     }
     hass.config_entries.async_update_entry(
         config_entry, data=config_entry.data, options=options
@@ -228,6 +287,7 @@ async def async_setup_entry(hass, config_entry):
         await async_set_options(hass, config_entry)
 
     coordinator = LoxoneCoordinator(hass, config_entry)
+    coordinator.state_cache = LoxoneStateCache(hass)
     host = config_entry.options.get(CONF_HOST)
 
     _LOGGER.info(
@@ -345,7 +405,20 @@ async def async_setup_entry(hass, config_entry):
     async def message_callback(message):
         """Fire message on HomeAssistant Bus."""
         _LOGGER.debug(f"{message}")
-        hass.bus.async_fire(EVENT, message)
+        updates = extract_uuid_updates(message)
+        emit_raw = config_entry.options.get(CONF_EMIT_RAW_LOXONE_EVENT, False)
+        state_cache = coordinator.state_cache
+
+        for uuid_value, value in updates.items():
+            if state_cache.get(uuid_value) == value:
+                continue
+
+            state_cache.set(uuid_value, value)
+            state_cache.notify(uuid_value)
+            hass.bus.async_fire(EVENT, build_minimal_event_payload(uuid_value, value))
+
+        if emit_raw and isinstance(message, dict):
+            hass.bus.async_fire(EVENT_RAW, message)
 
     async def handle_websocket_command(call):
         """Handle websocket command services."""
@@ -649,7 +722,9 @@ class LoxoneEntity(Entity):
                     traceback.print_exc()
                     sys.exit(-1)
 
+        self.config_entry = kwargs.get("config_entry")
         self.listener = None
+        self._uuid_listeners = []
 
         # Initialize base extra state attributes with common Loxone fields
         self._attr_extra_state_attributes = {
@@ -665,14 +740,83 @@ class LoxoneEntity(Entity):
 
     async def async_added_to_hass(self):
         """Subscribe to device events."""
-        self.listener = self.hass.bus.async_listen(EVENT, self.event_handler)
+        self._uuid_listeners = []
+        for uuid_value in self._get_subscription_uuids():
+            self._uuid_listeners.append(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_UUID_UPDATE.format(uuid=uuid_value),
+                    lambda uuid_value=uuid_value: self._handle_uuid_update(uuid_value),
+                )
+            )
 
     async def async_will_remove_from_hass(self):
         """Disconnect callbacks."""
+        for unsub in self._uuid_listeners:
+            unsub()
+        self._uuid_listeners = []
         self.listener = None
 
     async def event_handler(self, e):
         pass
+
+    def _get_subscription_uuids(self) -> set[str]:
+        uuids: set[str] = set()
+
+        def add_uuid(value):
+            if isinstance(value, str) and value:
+                uuids.add(value)
+
+        add_uuid(getattr(self, "uuidAction", ""))
+        add_uuid(getattr(self, "_state_uuid", ""))
+        add_uuid(getattr(self, "state_uuid", ""))
+
+        states = getattr(self, "states", None)
+        if isinstance(states, dict):
+            for value in states.values():
+                if isinstance(value, list):
+                    for item in value:
+                        add_uuid(item)
+                else:
+                    add_uuid(value)
+
+        state_attrib_uuids = getattr(self, "_stateAttribUuids", None)
+        if isinstance(state_attrib_uuids, dict):
+            for value in state_attrib_uuids.values():
+                if isinstance(value, list):
+                    for item in value:
+                        add_uuid(item)
+                else:
+                    add_uuid(value)
+
+        all_uuids = getattr(self, "_all_uuids", None)
+        if isinstance(all_uuids, set):
+            for value in all_uuids:
+                add_uuid(value)
+
+        extra_uuids = getattr(self, "_extra_subscription_uuids", None)
+        if isinstance(extra_uuids, set):
+            for value in extra_uuids:
+                add_uuid(value)
+
+        return uuids
+
+    def _get_state_cache(self) -> LoxoneStateCache | None:
+        coordinator = None
+        if self.config_entry is not None:
+            coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        if coordinator is None:
+            domain_data = self.hass.data.get(DOMAIN, {})
+            if domain_data:
+                coordinator = next(iter(domain_data.values()))
+        return getattr(coordinator, "state_cache", None)
+
+    def _handle_uuid_update(self, uuid_value: str) -> None:
+        state_cache = self._get_state_cache()
+        if state_cache is None or not state_cache.has(uuid_value):
+            return
+        event = SimpleNamespace(data={uuid_value: state_cache.get(uuid_value)})
+        self.hass.async_create_task(self.event_handler(event))
 
     @cached_property
     def name(self):
